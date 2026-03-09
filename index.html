@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>五朵金花保皇记账</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f0f0f; color: #e0e0e0; font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif; font-size: 14px; min-height: 100vh; }
+    input, button { font-family: inherit; outline: none; }
+    button { cursor: pointer; }
+    input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+    input[type=datetime-local] { color-scheme: dark; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .row { animation: slideIn .2s ease; }
+
+    #topbar { background: #1a1a1a; border-bottom: 1px solid #2a2a2a; padding: 14px 20px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+    #topbar .title { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
+
+    .wrap { max-width: 520px; margin: 0 auto; padding: 16px 14px; }
+
+    .block { margin-bottom: 16px; }
+    .block-label { font-size: 12px; color: #555; margin-bottom: 8px; letter-spacing: 0.5px; }
+    .block-body { background: #161616; border: 1px solid #242424; border-radius: 10px; padding: 14px; }
+
+    .input { width: 100%; padding: 7px 10px; border-radius: 7px; border: 1px solid #2a2a2a; background: #111; color: #e0e0e0; font-size: 14px; }
+    .input.right { text-align: right; }
+    .input.mb8 { margin-bottom: 8px; }
+    .input.mb10 { margin-bottom: 10px; }
+
+    .btn { padding: 8px 16px; border-radius: 7px; border: none; background: #2a2a2a; color: #ccc; font-size: 13px; }
+    .btn.ghost { background: transparent; border: 1px solid #333; color: #888; }
+    .btn.primary { background: #2e7d32; color: #fff; font-weight: 700; font-size: 14px; padding: 10px; }
+    .btn.primary:disabled { background: #1a1a1a; color: #444; cursor: not-allowed; }
+
+    .player-tag { display: flex; align-items: center; gap: 4px; background: #1e1e1e; border: 1px solid #333; border-radius: 16px; padding: 3px 8px 3px 10px; font-size: 13px; }
+    .player-tag .score { margin-left: 4px; font-size: 12px; }
+    .player-tag button { background: none; border: none; color: #444; font-size: 14px; padding: 0 2px; line-height: 1; }
+
+    .row-player { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .row-player .name { width: 64px; flex-shrink: 0; color: #aaa; }
+
+    .rank-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #1e1e1e; }
+    .rank-row:last-child { border-bottom: none; }
+
+    .hist-card { background: #1a1a1a; border: 1px solid #252525; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+    .hist-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .hist-date { color: #888; font-size: 12px; }
+    .hist-actions button { background: none; border: none; color: #555; font-size: 13px; margin-left: 8px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .tag { font-size: 13px; padding: 2px 8px; border-radius: 10px; }
+    .tag.pos { background: rgba(76,175,80,.12); color: #4caf50; border: 1px solid #2e5a2e; }
+    .tag.neg { background: rgba(244,67,54,.12); color: #f44336; border: 1px solid #5a2e2e; }
+    .hist-note { margin-top: 5px; font-size: 12px; color: #555; }
+
+    .warn { font-size: 12px; color: #f44336; margin-bottom: 8px; }
+    .empty { color: #444; font-size: 13px; }
+    .flex-gap8 { display: flex; gap: 8px; }
+    .flex-wrap-gap6 { display: flex; flex-wrap: wrap; gap: 6px; }
+    .green { color: #4caf50; } .red { color: #f44336; } .gray { color: #888; }
+    .bold16 { font-weight: 700; font-size: 16px; }
+  </style>
+</head>
+<body>
+
+<div id="topbar">
+  <span style="font-size:20px">🃏</span>
+  <span class="title">五朵金花保皇记账</span>
+</div>
+
+<div class="wrap" id="app"></div>
+
+<script>
+// ── 数据层（localStorage）──────────────────────────────────────────────────────
+const KEY = "baohuang-money-v1";
+function loadData() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : { players: [], sessions: [] }; } catch { return { players: [], sessions: [] }; } }
+function saveData(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch {} }
+
+// ── 工具函数 ──────────────────────────────────────────────────────────────────
+const fmt = n => n === 0 ? "0" : n > 0 ? `+${n}` : `${n}`;
+const fmtDate = s => {
+  const d = new Date(s);
+  return `${d.getFullYear()}/${d.getMonth()+1}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+};
+const nowLocal = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+const el = (tag, attrs, ...children) => {
+  const e = document.createElement(tag);
+  if (attrs) Object.entries(attrs).forEach(([k, v]) => {
+    if (k === 'class') e.className = v;
+    else if (k === 'style') Object.assign(e.style, v);
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(), v);
+    else e.setAttribute(k, v);
+  });
+  children.flat().forEach(c => {
+    if (c == null) return;
+    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  });
+  return e;
+};
+const div = (attrs, ...c) => el('div', attrs, ...c);
+const span = (attrs, ...c) => el('span', attrs, ...c);
+const btn = (attrs, ...c) => el('button', attrs, ...c);
+const inp = (attrs) => el('input', attrs);
+
+// ── 状态 ──────────────────────────────────────────────────────────────────────
+let state = loadData();
+let formAmounts = {};
+let formNote = "";
+let formDate = nowLocal();
+let editId = null;
+let newName = "";
+
+function persist() { saveData(state); }
+
+// ── 计算 ──────────────────────────────────────────────────────────────────────
+function getTotals() {
+  const t = {};
+  state.players.forEach(p => t[p] = 0);
+  state.sessions.forEach(s => s.entries.forEach(e => { if (t[e.name] !== undefined) t[e.name] += e.amount; }));
+  return t;
+}
+
+// ── 渲染 ──────────────────────────────────────────────────────────────────────
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  const totals = getTotals();
+  const ranked = [...state.players].sort((a, b) => (totals[b]||0) - (totals[a]||0));
+
+  // ── 玩家区 ──
+  const playerWrap = div({'class':'flex-wrap-gap6'});
+  if (state.players.length === 0) {
+    playerWrap.appendChild(span({'class':'empty'}, '先添加玩家'));
+  } else {
+    state.players.forEach(p => {
+      const score = totals[p];
+      const sc = score > 0 ? 'green' : score < 0 ? 'red' : '';
+      const tag = div({'class':'player-tag'},
+        span({}, p),
+        span({'class': 'score ' + sc}, fmt(score)),
+        btn({'onClick': () => { delete formAmounts[p]; state.players = state.players.filter(x => x !== p); persist(); render(); }}, '×')
+      );
+      playerWrap.appendChild(tag);
+    });
+  }
+
+  const nameInp = inp({'class':'input', 'placeholder':'玩家名字', 'value': newName});
+  nameInp.addEventListener('input', e => newName = e.target.value);
+  nameInp.addEventListener('keydown', e => { if (e.key === 'Enter') addPlayer(nameInp); });
+
+  const addBtn = btn({'class':'btn', 'onClick': () => addPlayer(nameInp)}, '添加');
+
+  const playersBlock = div({'class':'block'},
+    div({'class':'block-label'}, '玩家'),
+    div({'class':'block-body'},
+      div({'class':'flex-gap8', 'style':{'marginBottom':'10px'}}, nameInp, addBtn),
+      playerWrap
+    )
+  );
+  app.appendChild(playersBlock);
+
+  // ── 记录表单 ──
+  if (state.players.length >= 2) {
+    const formBody = div({'class':'block-body'});
+
+    // 每位玩家输入行
+    state.players.forEach(p => {
+      const amount = formAmounts[p] || '';
+      const numVal = Number(amount);
+      const color = numVal > 0 ? '#4caf50' : numVal < 0 ? '#f44336' : '#e0e0e0';
+      const amtInp = inp({'class':'input right', 'type':'number', 'placeholder':'0', 'value': amount, 'style':{'flex':'1','color':color}});
+      amtInp.addEventListener('input', e => {
+        formAmounts[p] = e.target.value;
+        amtInp.style.color = Number(e.target.value) > 0 ? '#4caf50' : Number(e.target.value) < 0 ? '#f44336' : '#e0e0e0';
+        updateWarn();
+      });
+      formBody.appendChild(div({'class':'row-player'},
+        span({'class':'name'}, p),
+        amtInp
+      ));
+    });
+
+    // 合计警告
+    const warnEl = div({'class':'warn'});
+    warnEl.id = 'form-warn';
+    formBody.appendChild(warnEl);
+    updateWarnIn(warnEl);
+
+    // 日期
+    const dateInp = inp({'class':'input mb8', 'type':'datetime-local', 'value': formDate});
+    dateInp.addEventListener('change', e => formDate = e.target.value);
+    formBody.appendChild(dateInp);
+
+    // 备注
+    const noteInp = inp({'class':'input mb10', 'placeholder':'备注（可选）', 'value': formNote});
+    noteInp.addEventListener('input', e => formNote = e.target.value);
+    formBody.appendChild(noteInp);
+
+    // 按钮行
+    const submitBtn = btn({'class':'btn primary', 'style':{'flex':'1'}}, editId ? '保存修改' : '✓ 记录');
+    const isValid = state.players.some(p => Number(formAmounts[p]) !== 0);
+    if (!isValid) submitBtn.disabled = true;
+    submitBtn.addEventListener('click', submitForm);
+
+    const btnRow = div({'class':'flex-gap8'}, submitBtn);
+    if (editId !== null) {
+      const cancelBtn = btn({'class':'btn ghost', 'onClick': cancelEdit}, '取消');
+      btnRow.appendChild(cancelBtn);
+    }
+    formBody.appendChild(btnRow);
+
+    app.appendChild(div({'class':'block'},
+      div({'class':'block-label'}, editId !== null ? '✏️ 修改记录' : '记录本次'),
+      formBody
+    ));
+  }
+
+  // ── 总览排行 ──
+  if (state.sessions.length > 0) {
+    const rankBody = div({'class':'block-body'});
+    ranked.forEach((p, i) => {
+      const score = totals[p];
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}`;
+      rankBody.appendChild(div({'class':'rank-row'},
+        span({'style':{'width':'24px','color':'#444','fontSize':'13px'}}, medal),
+        span({'style':{'flex':'1'}}, p),
+        span({'class':'bold16 ' + (score > 0 ? 'green' : score < 0 ? 'red' : 'gray')}, fmt(score))
+      ));
+    });
+    app.appendChild(div({'class':'block'},
+      div({'class':'block-label'}, `总览（${state.sessions.length}次）`),
+      rankBody
+    ));
+  }
+
+  // ── 历史记录 ──
+  if (state.sessions.length > 0) {
+    const histBody = div({'class':'block-body'});
+    state.sessions.forEach(s => {
+      const tags = div({'class':'tags'});
+      s.entries.filter(e => e.amount !== 0).forEach(e => {
+        tags.appendChild(span({'class':'tag ' + (e.amount > 0 ? 'pos' : 'neg')}, `${e.name} ${fmt(e.amount)}`));
+      });
+      const card = div({'class':'hist-card row'},
+        div({'class':'hist-head'},
+          span({'class':'hist-date'}, fmtDate(s.date)),
+          div({'class':'hist-actions'},
+            btn({'onClick': () => startEdit(s)}, '✏️'),
+            btn({'onClick': () => { state.sessions = state.sessions.filter(x => x.id !== s.id); persist(); render(); }}, '🗑')
+          )
+        ),
+        tags,
+        s.note ? div({'class':'hist-note'}, `📝 ${s.note}`) : null
+      );
+      histBody.appendChild(card);
+    });
+    app.appendChild(div({'class':'block'},
+      div({'class':'block-label'}, '历史'),
+      histBody
+    ));
+  }
+}
+
+function updateWarn() {
+  const el = document.getElementById('form-warn');
+  if (el) updateWarnIn(el);
+}
+function updateWarnIn(el) {
+  const sum = state.players.reduce((acc, p) => acc + (Number(formAmounts[p]) || 0), 0);
+  el.textContent = sum !== 0 ? `⚠️ 金额合计 ${fmt(sum)}，通常应该为 0（赢多少=输多少）` : '';
+}
+
+function addPlayer(nameInp) {
+  const n = newName.trim();
+  if (!n || state.players.includes(n)) return;
+  state.players.push(n);
+  newName = '';
+  nameInp.value = '';
+  persist();
+  render();
+}
+
+function submitForm() {
+  const entries = state.players.map(p => ({ name: p, amount: Number(formAmounts[p]) || 0 }));
+  if (entries.every(e => e.amount === 0)) return;
+  const iso = new Date(formDate).toISOString();
+  if (editId !== null) {
+    state.sessions = state.sessions.map(s => s.id === editId ? { ...s, date: iso, entries, note: formNote } : s);
+    editId = null;
+  } else {
+    state.sessions.unshift({ id: Date.now(), date: iso, entries, note: formNote });
+  }
+  formAmounts = {}; formNote = ''; formDate = nowLocal();
+  persist(); render();
+}
+
+function startEdit(s) {
+  editId = s.id;
+  formAmounts = {};
+  s.entries.forEach(e => formAmounts[e.name] = String(e.amount));
+  formNote = s.note || '';
+  const d = new Date(s.date);
+  formDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelEdit() {
+  editId = null; formAmounts = {}; formNote = ''; formDate = nowLocal();
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
